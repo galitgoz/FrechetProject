@@ -1,6 +1,9 @@
 import matplotlib.pyplot as plt
 from typing import List, Tuple
 
+from frechet.computations import greedy_frechet_distance, discrete_frechet_distance
+
+
 # Visualization functions
 def plot_frechet(curve_a: Curve, curve_b: Curve, path: List[Tuple[int, int]], title: str):
     fig, ax = plt.subplots()

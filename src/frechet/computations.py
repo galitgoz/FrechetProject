@@ -11,7 +11,7 @@ def euclidean_distance(p1: Point, p2: Point) -> float:
     return math.hypot(p1[0] - p2[0], p1[1] - p2[1])
 
 # Frechet Distance functions
-def real_discrete_frechet(P: Curve, Q: Curve) -> float:
+def discrete_frechet_distance(P: Curve, Q: Curve) -> float:
     n, m = len(P), len(Q)
     if n == 0 or m == 0:
         raise ValueError("Curves must have at least one point each.")
@@ -29,7 +29,7 @@ def real_discrete_frechet(P: Curve, Q: Curve) -> float:
             )
     return dp[-1][-1]
 
-def greedy_frechet_distance_with_path(curveA: Curve, curveB: Curve) -> Tuple[float, List[Tuple[int, int]]]:
+def greedy_frechet_distance(curveA: Curve, curveB: Curve) -> Tuple[float, List[Tuple[int, int]]]:
     i, j = 0, 0
     path = [(i, j)]
     max_dist = euclidean_distance(curveA[0], curveB[0])
