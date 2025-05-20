@@ -4,6 +4,7 @@ import pandas as pd
 from scipy.fft import fft
 from typing import List, Tuple
 
+
 Point = Tuple[float, float]
 Curve = List[Point]
 
@@ -81,3 +82,22 @@ def fourier_descriptor(curve: Curve, k: int = 20) -> np.ndarray:
             mag = np.pad(mag, (0, k - len(mag)))
     norm = np.linalg.norm(mag)
     return mag / norm if norm > 0 else mag
+
+def compute_distance_matrix(curveA: Curve, curveB: Curve) -> np.ndarray:
+    """
+    Construct a matrix of pairwise distances between points of two curves.
+    """
+    nA, nB = len(curveA), len(curveB)
+    dist_matrix = np.zeros((nA, nB))
+    for i in range(nA):
+        for j in range(nB):
+            dist_matrix[i, j] = euclidean_distance(curveA[i], curveB[j])
+    return dist_matrix
+
+
+def compute_jerk(curve: Curve, dt: float = 1.0) -> np.ndarray:
+    curve = np.asarray(curve)
+    v = np.diff(curve, axis=0) / dt
+    a = np.diff(v, axis=0) / dt
+    j = np.diff(a, axis=0) / dt
+    return j  #  (N-3, 2)

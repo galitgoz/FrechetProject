@@ -24,6 +24,8 @@ data/*.csv
 data/*.*
 data/*/*.*
 data/*.pdf
+data/Pet Cats United States.csv
+
 
 # Notebook artifacts
 .ipynb_checkpoints/
