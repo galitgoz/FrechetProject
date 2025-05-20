@@ -4,7 +4,7 @@ import plotly.graph_objects as go
 import numpy as np
 from typing import List, Tuple, Optional
 
-from frechet.computations import Curve
+from .computations import Curve
 
 def plot_curves(
     curve_a: Curve,

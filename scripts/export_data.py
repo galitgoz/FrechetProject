@@ -4,7 +4,7 @@ import glob
 import sys
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'src')))
-from frechet.io import parse_dataset
+from .io import parse_dataset
 
 
 def make_storms_csv(input_path: str, output_path: str):
