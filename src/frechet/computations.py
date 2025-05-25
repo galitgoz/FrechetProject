@@ -101,3 +101,31 @@ def compute_jerk(curve: Curve, dt: float = 1.0) -> np.ndarray:
     a = np.diff(v, axis=0) / dt
     j = np.diff(a, axis=0) / dt
     return j  #  (N-3, 2)
+
+def segment_curve_by_jerk(curve: Curve, jerk_threshold: float) -> List[Curve]:
+    """
+    Split the curve into sub-curves whenever jerk norm exceeds the given threshold.
+    Returns a list of sub-curves.
+    """
+    if len(curve) < 4:
+        return [curve]
+
+    jerks = compute_jerk(curve)
+    jerk_norms = np.linalg.norm(jerks, axis=1)
+
+    # Pad with zeros at start so that indices match original curve
+    split_indices = np.where(jerk_norms > jerk_threshold)[0] + 2  # +2 for alignment with curve indices
+
+    # Always start from zero
+    prev = 0
+    segments = []
+    for idx in split_indices:
+        # Avoid degenerate segments
+        if idx - prev > 2:
+            segments.append(curve[prev:idx+1])
+            prev = idx
+    # Last segment
+    if prev < len(curve) - 1:
+        segments.append(curve[prev:])
+
+    return segments

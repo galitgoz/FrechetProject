@@ -179,3 +179,23 @@ def plot_curve_with_jerk_coloring(
     plt.grid(True, linestyle='--', alpha=0.5)
     plt.tight_layout()
     plt.show()
+
+def plot_segmented_curves(segments: List[List[Tuple[float, float]]], title: str = "Segmented curves by jerk"):
+    """
+    Plot a list of sub-curves, each in a different color.
+
+    Parameters:
+        segments (List[List[Tuple[float, float]]]): List of sub-curves (each sub-curve is a list of points).
+        title (str): Plot title.
+    """
+    colors = plt.cm.rainbow(np.linspace(0, 1, len(segments)))
+    plt.figure(figsize=(8, 6))
+    for seg, color in zip(segments, colors):
+        arr = np.array(seg)
+        plt.plot(arr[:, 0], arr[:, 1], '-o', color=color)
+    plt.title(title)
+    plt.xlabel("X")
+    plt.ylabel("Y")
+    plt.grid(True, linestyle='--', alpha=0.5)
+    plt.tight_layout()
+    plt.show()

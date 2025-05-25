@@ -1,54 +1,112 @@
 import os
-import pandas as pd
 import glob
+import pandas as pd
 import sys
+import time
+from src.frechet.io import parse_dataset
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'src')))
-from .io import parse_dataset
+def print_progress_bar(iteration, total, prefix='', suffix='', length=40, fill='█'):
+    percent = (iteration / float(total)) * 100
+    filled_length = int(length * iteration // total)
+    bar = fill * filled_length + '-' * (length - filled_length)
+    print(f'\r{prefix} |{bar}| {percent:.1f}% {suffix}', end='')
+    if iteration == total:
+        print()
 
+def export_to_standard_csv(
+    dataset_type: str,
+    input_path: str,
+    output_path: str
+):
+    """
+    Parse a dataset and export to a standardized CSV with columns: id, date, hour, lat, lon.
+    """
+    try:
+        df = parse_dataset(dataset_type, input_path)
+    except Exception as e:
+        print(f"[ERROR] Failed to parse '{input_path}': {e}")
+        return
+    if 'datetime' not in df.columns:
+        print(f"[ERROR] 'datetime' column missing in {input_path}")
+        return
 
-def make_storms_csv(input_path: str, output_path: str):
-    storms_df = parse_dataset('hurdat2', input_path)
-    storms_df['date'] = storms_df['datetime'].dt.strftime('%Y%m%d')
-    storms_df['hour'] = storms_df['datetime'].dt.strftime('%H%M')
-    storms_df[['id', 'date', 'hour', 'lan', 'lon']].to_csv(output_path, index=False)
+    df['date'] = df['datetime'].dt.strftime('%Y%m%d')
+    df['hour'] = df['datetime'].dt.strftime('%H%M')
+    df_std = df[['id', 'date', 'hour', 'lat', 'lon']].copy()
+    df_std.to_csv(output_path, index=False)
+    print(f"[OK] Exported {len(df_std)} rows to '{output_path}'.")
 
-def make_taxi_csv(input_dir: str, output_path: str):
+def export_taxi_directory(input_dir: str, output_path: str):
+    """
+    Export all taxi data files from a directory into a single standardized CSV.
+    """
     all_files = glob.glob(os.path.join(input_dir, "*.txt"))
     all_dfs = []
-
-    for filename in all_files:
-        df = parse_dataset('taxi_data', filename)
-        df['date'] = df['datetime'].dt.strftime('%Y%m%d')
-        df['hour'] = df['datetime'].dt.strftime('%H%M')
-        df = df[['id', 'date', 'hour', 'lan', 'lon']]
-        all_dfs.append(df)
-
+    total = len(all_files)
+    for idx, filename in enumerate(all_files, 1):
+        try:
+            df = parse_dataset('taxi_data', filename)
+        except Exception as e:
+            print(f"[ERROR] Failed to parse '{filename}': {e}")
+            continue
+        for col in ['datetime', 'id', 'lat', 'lon']:
+            if col not in df.columns:
+                print(f"[ERROR] '{col}' column missing in {filename}")
+                break
+        else:
+            df['date'] = df['datetime'].dt.strftime('%Y%m%d')
+            df['hour'] = df['datetime'].dt.strftime('%H%M')
+            df = df[['id', 'date', 'hour', 'lat', 'lon']]
+            all_dfs.append(df)
+        print_progress_bar(idx, total, prefix='Processing taxi files:', suffix='Complete', length=40)
+    if not all_dfs:
+        print(f"[WARNING] No valid taxi files found in {input_dir}")
+        return
     combined_df = pd.concat(all_dfs, ignore_index=True)
     combined_df.to_csv(output_path, index=False)
+    print(f"[OK] Exported {len(combined_df)} rows to '{output_path}'.")
 
-def make_cats_csv(input_path: str, output_path: str):
-    cats_df = parse_dataset('movebank_cat', input_path)
-    cats_df['date'] = cats_df['timestamp'].dt.strftime('%Y%m%d')
-    cats_df['hour'] = cats_df['timestamp'].dt.strftime('%H%M')
-    cats_df.rename(columns={'location-lat': 'lan', 'location-long': 'lon', 'individual-local-identifier': 'id'}, inplace=True)
-    cats_df[['id', 'date', 'hour', 'lan', 'lon']].to_csv(output_path, index=False)
-
-def make_combined_csv(storm_csv: str, taxi_csv: str, combined_csv: str):
-    storms_df = pd.read_csv(storm_csv)
-    taxi_df = pd.read_csv(taxi_csv)
-    combined_df = pd.concat([storms_df, taxi_df], ignore_index=True)
-    combined_df.to_csv(combined_csv, index=False)
-
+def combine_csvs(input_paths, output_path):
+    """
+    Combine multiple CSVs into a single CSV.
+    """
+    dfs = []
+    for path in input_paths:
+        if not os.path.exists(path):
+            print(f"[ERROR] File not found: {path}")
+            continue
+        dfs.append(pd.read_csv(path))
+    if not dfs:
+        print("[ERROR] No files to combine.")
+        return
+    combined_df = pd.concat(dfs, ignore_index=True)
+    combined_df.to_csv(output_path, index=False)
+    print(f"[OK] Combined {len(dfs)} files into '{output_path}'.")
 
 def main():
-    make_storms_csv('../data/hurdat2-1851-2024-040425.txt', '../data/storms.csv')
-    make_taxi_csv('../data/taxi_log_2008_by_id/', '../data/taxi.csv')
-    make_cats_csv('../data/Pet Cats United States.csv', '../data/cats.csv')
-    make_combined_csv('../data/storms.csv', '../data/taxi.csv', '../data/all.csv')
+    # Storms
+    export_to_standard_csv(
+        dataset_type='hurdat2',
+        input_path='../data/hurdat2-1851-2024-040425.txt',
+        output_path='../data/storms.csv'
+    )
 
+    # Taxi
+    export_taxi_directory(
+        input_dir='../data/taxi_log_2008_by_id/',
+        output_path='../data/taxi.csv'
+    )
+
+    # Cats
+    export_to_standard_csv(
+        dataset_type='movebank_cat',
+        input_path='../data/Pet Cats United States.csv',
+        output_path='../data/cats.csv'
+    )
+
+    # Combine storms & taxi
+    combine_csvs(['../data/storms.csv', '../data/taxi.csv'], '../data/all.csv')
     print("All data exported successfully.")
-
 
 if __name__ == '__main__':
     main()
