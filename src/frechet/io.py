@@ -78,3 +78,27 @@ def parse_taxi_file(filepath: str) -> pd.DataFrame:
     df['datetime'] = pd.to_datetime(df['datetime'], format='%Y-%m-%d %H:%M:%S', errors='coerce')
     df.dropna(subset=['datetime'], inplace=True)
     return df[['id', 'datetime', 'lat', 'lon']]
+
+@register_parser('gagliardo_pigeon')
+def parse_gagliardo_pigeon(filepath: str) -> pd.DataFrame:
+    """
+    Parse Gagliardo et al. (2016) pigeon navigation data to standard DataFrame.
+    Expects columns: id, datetime, lat, lon (or similar, adjust as needed).
+    """
+    # Adjust the column names and parsing as needed for the actual data format
+    df = pd.read_csv(filepath)
+    # Example: if the file has columns 'pigeon_id', 'timestamp', 'latitude', 'longitude'
+    if 'pigeon_id' in df.columns:
+        df.rename(columns={
+            'pigeon_id': 'id',
+            'timestamp': 'datetime',
+            'latitude': 'lat',
+            'longitude': 'lon'
+        }, inplace=True)
+    # Parse datetime if needed
+    if 'datetime' in df.columns:
+        df['datetime'] = pd.to_datetime(df['datetime'], errors='coerce')
+    df = df[['id', 'datetime', 'lat', 'lon']]
+    df.dropna(subset=['datetime', 'lat', 'lon'], inplace=True)
+    return df
+

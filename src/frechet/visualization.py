@@ -162,7 +162,7 @@ def plot_curve_with_jerk_coloring(
     """
     import matplotlib.cm as cm
     jerk_norms = np.linalg.norm(jerks, axis=1)
-    norm = (jerk_norms - jerk_norms.min()) / (jerk_norms.ptp() + 1e-9)
+    norm = (jerk_norms - jerk_norms.min()) / (np.ptp(jerk_norms) + 1e-9)
     cmap = cm.get_cmap('plasma')
     curve_arr = np.array(curve)
     for i in range(2, len(curve)-1):
@@ -199,3 +199,4 @@ def plot_segmented_curves(segments: List[List[Tuple[float, float]]], title: str 
     plt.grid(True, linestyle='--', alpha=0.5)
     plt.tight_layout()
     plt.show()
+
