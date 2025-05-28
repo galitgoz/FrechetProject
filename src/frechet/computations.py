@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 from scipy.fft import fft
 from typing import List, Tuple
-
+from rdp import rdp
 
 Point = Tuple[float, float]
 Curve = List[Point]
