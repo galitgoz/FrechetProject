@@ -129,3 +129,38 @@ def segment_curve_by_jerk(curve: Curve, jerk_threshold: float) -> List[Curve]:
         segments.append(curve[prev:])
 
     return segments
+
+def rdp_simplify(curve: Curve, epsilon: float) -> Curve:
+    """
+    Ramer–Douglas–Peucker simplification for 2D curves.
+    Args:
+        curve: List of (x, y) points.
+        epsilon: Tolerance (max distance from original curve).
+    Returns:
+        Simplified curve as a list of points.
+    """
+    if len(curve) < 3:
+        return curve
+    def point_line_distance(point, start, end):
+        if start == end:
+            return euclidean_distance(point, start)
+        x0, y0 = point
+        x1, y1 = start
+        x2, y2 = end
+        num = abs((y2-y1)*x0 - (x2-x1)*y0 + x2*y1 - y2*x1)
+        den = math.hypot(y2-y1, x2-x1)
+        return num / den
+    dmax = 0.0
+    index = 0
+    for i in range(1, len(curve)-1):
+        d = point_line_distance(curve[i], curve[0], curve[-1])
+        if d > dmax:
+            index = i
+            dmax = d
+    if dmax > epsilon:
+        rec1 = rdp_simplify(curve[:index+1], epsilon)
+        rec2 = rdp_simplify(curve[index:], epsilon)
+        return rec1[:-1] + rec2
+    else:
+        return [curve[0], curve[-1]]
+

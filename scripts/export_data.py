@@ -31,7 +31,7 @@ def export_to_standard_csv(
         return
 
     df['date'] = df['datetime'].dt.strftime('%Y%m%d')
-    df['hour'] = df['datetime'].dt.strftime('%H%M')
+    df['hour'] = df['datetime'].dt.strftime('%H%M%S')
     df_std = df[['id', 'date', 'hour', 'lat', 'lon']].copy()
     df_std.to_csv(output_path, index=False)
     print(f"[OK] Exported {len(df_std)} rows to '{output_path}'.")
@@ -102,6 +102,13 @@ def main():
         dataset_type='movebank_cat',
         input_path='../data/Pet Cats United States.csv',
         output_path='../data/cats.csv'
+    )
+
+    # Pigeon (Gagliardo et al. 2016)
+    export_to_standard_csv(
+        dataset_type='gagliardo_pigeon',
+        input_path='../data/HomingPigeonsOlfaction-Version2.csv',
+        output_path='../data/pigeons.csv'
     )
 
     # Combine storms & taxi
