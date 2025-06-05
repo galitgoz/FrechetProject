@@ -95,12 +95,27 @@ def compute_distance_matrix(curveA: Curve, curveB: Curve) -> np.ndarray:
     return dist_matrix
 
 
-def compute_jerk(curve: Curve, dt: float = 1.0) -> np.ndarray:
+def compute_jerk(curve: Curve, dt: float = 1.0, times: np.ndarray = None) -> np.ndarray:
+    """
+    Compute jerk (third derivative) for a curve.
+    If times is provided, use non-uniform time intervals.
+    curve: list of (x, y)
+    times: array-like of timestamps (same length as curve)
+    Returns: jerk array of shape (N-3, 2)
+    """
     curve = np.asarray(curve)
-    v = np.diff(curve, axis=0) / dt
-    a = np.diff(v, axis=0) / dt
-    j = np.diff(a, axis=0) / dt
-    return j  #  (N-3, 2)
+    if times is not None:
+        times = np.asarray(times)
+        # Compute velocities with variable dt
+        v = np.diff(curve, axis=0) / np.diff(times)[:, None]
+        a = np.diff(v, axis=0) / np.diff(times[1:])[:, None]
+        j = np.diff(a, axis=0) / np.diff(times[2:])[:, None]
+        return j
+    else:
+        v = np.diff(curve, axis=0) / dt
+        a = np.diff(v, axis=0) / dt
+        j = np.diff(a, axis=0) / dt
+        return j
 
 def segment_curve_by_jerk(curve: Curve, jerk_threshold: float) -> List[Curve]:
     """
@@ -129,6 +144,19 @@ def segment_curve_by_jerk(curve: Curve, jerk_threshold: float) -> List[Curve]:
         segments.append(curve[prev:])
 
     return segments
+
+def filter_outlier_points(curve, jerks, sigma=3):
+    """
+    Remove points from the curve where jerk norm is above mean + sigma*std.
+    Returns filtered curve and indices kept.
+    """
+    jerk_norms = np.linalg.norm(jerks, axis=1)
+    threshold = jerk_norms.mean() + sigma * jerk_norms.std()
+    # Indices of points to keep (pad to match curve length)
+    keep_idx = [0, 1]  # always keep first two points
+    keep_idx += [i+2 for i, jn in enumerate(jerk_norms) if jn <= threshold]
+    filtered_curve = [curve[i] for i in keep_idx]
+    return filtered_curve, keep_idx
 
 def rdp_simplify(curve: Curve, epsilon: float) -> Curve:
     """

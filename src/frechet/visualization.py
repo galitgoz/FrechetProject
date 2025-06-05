@@ -200,3 +200,45 @@ def plot_segmented_curves(segments: List[List[Tuple[float, float]]], title: str 
     plt.tight_layout()
     plt.show()
 
+
+def plot_jerk_with_outliers(
+    jerks: np.ndarray,
+    threshold: float = None,
+    title: str = "Jerk along the curve with outliers"
+):
+    """
+    Plot jerk (X, Y, norm) and mark outlier points (spikes) on the plot.
+    threshold: if None, use 3*std as default.
+    """
+    n = jerks.shape[0]
+    idx = np.arange(n)
+    jerk_norms = np.linalg.norm(jerks, axis=1)
+
+    # If threshold not given, define it as 3 standard deviations above the mean
+    if threshold is None:
+        threshold = jerk_norms.mean() + 3*jerk_norms.std()
+
+    # Find outlier indices
+    outlier_idx = np.where(jerk_norms > threshold)[0]
+
+    plt.figure(figsize=(12, 6))
+    plt.plot(idx, jerks[:, 0], label='Jerk X', color='blue')
+    plt.plot(idx, jerks[:, 1], label='Jerk Y', color='orange')
+    plt.plot(idx, jerk_norms, label='Jerk Norm', color='green', linestyle='--', linewidth=2)
+
+    # Mark outliers with red circles
+    plt.scatter(outlier_idx, jerk_norms[outlier_idx], color='red', marker='o', s=80, label='Outliers')
+    plt.xlabel("Point Index")
+    plt.ylabel("Jerk Value")
+    plt.title(title + f" (threshold={threshold:.3g})")
+    plt.legend()
+    plt.grid(True, linestyle='--', alpha=0.5)
+    plt.tight_layout()
+    plt.show()
+
+    # Print summary
+    if len(outlier_idx) == 0:
+        print("No outliers found (with current threshold).")
+    else:
+        print(f"{len(outlier_idx)} outliers found at indices: {outlier_idx.tolist()}")
+
