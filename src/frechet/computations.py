@@ -49,6 +49,33 @@ def greedy_frechet_distance(curveA: Curve, curveB: Curve) -> Tuple[float, List[T
         j += 1; current = euclidean_distance(curveA[i], curveB[j]); max_dist = max(max_dist, current); path.append((i, j))
     return max_dist, path
 
+def align_curves(curveA: Curve, curveB: Curve, align_start=True, align_end=False) -> Tuple[Curve, Curve]:
+    """
+    Align two curves by their start and/or end points.
+    If align_start: translate both so their first points coincide.
+    If align_end: after aligning starts, rotate/scale so ends match.
+    Returns aligned copies of curveA, curveB.
+    """
+    a = np.array(curveA)
+    b = np.array(curveB)
+    if align_start:
+        offset = a[0] - b[0]
+        b = b + offset
+    if align_end:
+        vec_a = a[-1] - a[0]
+        vec_b = b[-1] - b[0]
+        norm_a = np.linalg.norm(vec_a)
+        norm_b = np.linalg.norm(vec_b)
+        if norm_a > 0 and norm_b > 0:
+            scale = norm_a / norm_b
+            b = (b - b[0]) * scale + b[0]
+            angle_a = np.arctan2(vec_a[1], vec_a[0])
+            angle_b = np.arctan2(vec_b[1], vec_b[0])
+            angle = angle_a - angle_b
+            rot = np.array([[np.cos(angle), -np.sin(angle)], [np.sin(angle), np.cos(angle)]])
+            b = (b - b[0]) @ rot.T + b[0]
+    return a.tolist(), b.tolist()
+
 # Curve Analysis functions
 
 def turning_angle_histogram(curve: Curve, num_bins: int = 32) -> np.ndarray:
@@ -192,3 +219,93 @@ def rdp_simplify(curve: Curve, epsilon: float) -> Curve:
     else:
         return [curve[0], curve[-1]]
 
+
+def simplify_curve_grid_sampling(curve, num_points=None):
+    """
+    Simplify curve by sampling sqrt(n) points from grid cells.
+    """
+    curve = np.array(curve)
+    n = len(curve)
+
+    if num_points is None:
+        num_points = int(np.sqrt(n))
+
+    # Compute bounding box
+    min_x, min_y = curve.min(axis=0)
+    max_x, max_y = curve.max(axis=0)
+
+    # Define grid
+    x_bins = np.linspace(min_x, max_x, num_points+1)
+    y_bins = np.linspace(min_y, max_y, num_points+1)
+
+    # Store sampled points
+    simplified_points = []
+
+    # For each grid cell, pick a representative point
+    for i in range(num_points):
+        for j in range(num_points):
+            # Points inside the current cell
+            in_cell = curve[
+                (curve[:,0] >= x_bins[i]) & (curve[:,0] < x_bins[i+1]) &
+                (curve[:,1] >= y_bins[j]) & (curve[:,1] < y_bins[j+1])
+            ]
+
+            if len(in_cell) > 0:
+                # Cell center
+                cell_center = np.array([
+                    (x_bins[i] + x_bins[i+1]) / 2,
+                    (y_bins[j] + y_bins[j+1]) / 2
+                ])
+
+                # Select the point closest to cell center
+                distances = np.linalg.norm(in_cell - cell_center, axis=1)
+                representative_point = in_cell[np.argmin(distances)]
+
+                simplified_points.append(representative_point)
+
+    return np.array(simplified_points)
+
+def combined_simplification(curve, jerk_sigma=3, angle_threshold=np.pi/8):
+    """
+    Combines jerk-based and angular-based simplification.
+
+    Params:
+    - curve: original curve as array (n,2).
+    - jerk_sigma: threshold for jerk filtering (higher means fewer points).
+    - angle_threshold: threshold (radians) for angular simplification.
+
+    Returns:
+    - simplified_curve: simplified points preserving jerk and angular features.
+    """
+    curve = np.array(curve)
+
+    # Step 1: Jerk-based simplification
+    jerks = compute_jerk(curve)
+    jerk_norms = np.linalg.norm(jerks, axis=1)
+    jerk_threshold = jerk_norms.mean() + jerk_sigma * jerk_norms.std()
+
+    # Keep indices with high jerk
+    jerk_high_idx = set(np.where(jerk_norms > jerk_threshold)[0] + 2)  # offset by 2 due to jerk computation
+
+    # Step 2: Angular-based simplification
+    def compute_angles(curve):
+        v1 = curve[1:-1] - curve[:-2]
+        v2 = curve[2:] - curve[1:-1]
+        norm1 = np.linalg.norm(v1, axis=1)
+        norm2 = np.linalg.norm(v2, axis=1)
+        cos_angle = np.einsum('ij,ij->i', v1, v2) / (norm1 * norm2 + 1e-9)
+        angles = np.arccos(np.clip(cos_angle, -1.0, 1.0))
+        return angles
+
+    angles = compute_angles(curve)
+    angle_high_idx = set(np.where(angles > angle_threshold)[0] + 1)  # offset by 1 due to angle computation
+
+    # Combine indices from both criteria
+    key_points_idx = jerk_high_idx.union(angle_high_idx)
+    key_points_idx.update({0, len(curve)-1})  # Always keep first and last points
+
+    # Sort indices and generate simplified curve
+    simplified_idx = sorted(key_points_idx)
+    simplified_curve = curve[simplified_idx]
+
+    return simplified_curve
