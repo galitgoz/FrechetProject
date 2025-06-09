@@ -44,7 +44,7 @@ total_pairs = len(ids) * (len(ids) - 1) // 2
 pair_count = 0
 
 # Optional: limit the number of pairs processed
-MAX_PAIRS = 19000  # Set to an integer to limit, or None for no limit
+MAX_PAIRS = 500  # Set to an integer to limit, or None for no limit
 
 for i in range(len(ids)):
     for j in range(i+1, len(ids)):
