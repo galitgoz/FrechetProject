@@ -3,6 +3,8 @@ import plotly.express as px
 import plotly.graph_objects as go
 import numpy as np
 from typing import List, Tuple, Optional
+from geopy.distance import geodesic
+
 
 from .computations import Curve
 
@@ -242,3 +244,44 @@ def plot_jerk_with_outliers(
     else:
         print(f"{len(outlier_idx)} outliers found at indices: {outlier_idx.tolist()}")
 
+def plot_time_and_distance_histograms(csv_path, id_col='id', date_col='date', hour_col='hour', lat_col='lat', lon_col='lon'):
+    # Load the data
+    df = pd.read_csv(csv_path)
+    df[hour_col] = df[hour_col].astype(str).str.zfill(6)
+    df['datetime'] = pd.to_datetime(df[date_col].astype(str) + df[hour_col], format='%Y%m%d%H%M%S', errors='coerce')
+    df = df.dropna(subset=['datetime', lat_col, lon_col])
+    df = df.sort_values([id_col, 'datetime'])
+
+    time_deltas = []
+    distance_deltas = []
+
+    for _, group in df.groupby(id_col):
+        group = group.sort_values('datetime')
+        times = group['datetime'].values
+        coords = list(zip(group[lat_col], group[lon_col]))
+
+        # Time differences in minutes
+        td = np.diff(times).astype('timedelta64[s]').astype(float) / 60.0
+        time_deltas.extend(td)
+
+        # Distance differences in meters
+        dd = [geodesic(coords[i], coords[i + 1]).meters for i in range(len(coords) - 1)]
+        distance_deltas.extend(dd)
+
+    # Plotting
+    fig, axs = plt.subplots(1, 2, figsize=(14, 5))
+
+    # Time intervals
+    axs[0].hist(time_deltas, bins=50, color='red', density=True)
+    axs[0].set_xlabel('minutes')
+    axs[0].set_ylabel('proportion')
+    axs[0].set_title('(a) time interval')
+
+    # Distance intervals
+    axs[1].hist(distance_deltas, bins=50, color='red', density=True)
+    axs[1].set_xlabel('meters')
+    axs[1].set_ylabel('proportion')
+    axs[1].set_title('(b) distance interval')
+
+    plt.tight_layout()
+    plt.show()
