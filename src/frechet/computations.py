@@ -309,3 +309,102 @@ def combined_simplification(curve, jerk_sigma=3, angle_threshold=np.pi/8):
     simplified_curve = curve[simplified_idx]
 
     return simplified_curve
+
+def haversine(lat1, lon1, lat2, lon2):
+    """
+    Calculate the great-circle distance between two points on the Earth (specified in decimal degrees).
+    Returns distance in kilometers.
+    """
+    R = 6371.0
+    dlat = math.radians(lat2 - lat1)
+    dlon = math.radians(lon2 - lon1)
+    a = math.sin(dlat / 2) ** 2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon / 2) ** 2
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+    return R * c
+
+def extract_speed_change_points(df, threshold_kmh):
+    """
+    Given a DataFrame with columns ['id', 'date', 'hour', 'lat', 'lon'],
+    returns indices of points to keep: all source points and any point where speed changes by at least threshold_kmh.
+    """
+    keep_indices = set()
+    for id_val, group in df.groupby('id'):
+        group = group.reset_index()
+        lats = group['lat'].values
+        lons = group['lon'].values
+        times = group['datetime'].values.astype('datetime64[s]').astype(np.int64) / 3600.0  # hours
+        speeds = []
+        for i in range(1, len(group)):
+            dist = haversine(lats[i-1], lons[i-1], lats[i], lons[i])  # km
+            dt = times[i] - times[i-1]
+            speed = dist / dt if dt > 0 else 0.0
+            speeds.append(speed)
+        speeds = np.array(speeds)
+        # Always keep the first point
+        keep_indices.add(group.loc[0, 'index'])
+        for i in range(1, len(speeds)):
+            if abs(speeds[i] - speeds[i-1]) >= threshold_kmh:
+                keep_indices.add(group.loc[i, 'index'])
+        # Always keep the last point
+        if len(group) > 1:
+            keep_indices.add(group.loc[len(group)-1, 'index'])
+    return keep_indices
+
+def parse_datetime_column(df):
+    """
+    Adds a 'datetime' column to the DataFrame from 'date' and 'hour' columns.
+    Drops rows with invalid datetimes and sorts by id and datetime.
+    """
+    df['datetime'] = df.apply(lambda row: pd.to_datetime(str(row['date']) + str(row['hour']).zfill(6), format='%Y%m%d%H%M%S', errors='coerce'), axis=1)
+    df = df.dropna(subset=['datetime'])
+    df = df.sort_values(['id', 'datetime']).reset_index(drop=True)
+    return df
+
+def filter_speed_change_points(df, threshold_kmh):
+    """
+    Returns a DataFrame with all source points and any point where speed changes by at least threshold_kmh.
+    Requires 'datetime' column to be present.
+    """
+    keep_indices = extract_speed_change_points(df, threshold_kmh)
+    out_df = df.loc[sorted(keep_indices)].sort_values(['id', 'datetime'])
+    out_df = out_df.drop(columns=['datetime'])
+    return out_df
+
+def velocity_grid_simplify(curve, times=None, velocity_threshold_kmh=10, c=None):
+    """
+    Simplify a curve by:
+    1. Adding points where the velocity changes by at least velocity_threshold_kmh (km/h).
+    2. Then, sample sqrt(n)/c points (where n is the original curve length, c=log(n) by default) using grid sampling.
+    Returns the simplified curve as a numpy array.
+    """
+    import numpy as np
+    import math
+    if len(curve) < 4:
+        return np.array(curve)
+    n = len(curve)
+    if times is None:
+        times = np.arange(n)
+    lats = np.array([p[1] for p in curve])
+    lons = np.array([p[0] for p in curve])
+    speeds = []
+    for i in range(1, n):
+        dist = haversine(lats[i-1], lons[i-1], lats[i], lons[i])
+        dt = times[i] - times[i-1]
+        speed = dist / dt if dt > 0 else 0.0
+        speeds.append(speed)
+    speeds = np.array(speeds)
+    keep = set([0])
+    for i in range(1, len(speeds)):
+        if abs(speeds[i] - speeds[i-1]) >= velocity_threshold_kmh:
+            keep.add(i)
+    keep.add(n-1)
+    curve_with_vel = [curve[i] for i in sorted(keep)]
+    arr_vel = np.array(curve_with_vel)
+    n0 = len(curve)
+    if c is None:
+        c = math.log(n0) if n0 > 1 else 1
+    num_points = max(2, int(np.sqrt(n0) / c))
+    if num_points >= len(arr_vel):
+        return arr_vel
+    else:
+        return simplify_curve_grid_sampling(arr_vel, num_points=num_points)

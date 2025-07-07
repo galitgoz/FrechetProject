@@ -1,4 +1,5 @@
 import matplotlib.pyplot as plt
+import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import numpy as np
@@ -244,9 +245,8 @@ def plot_jerk_with_outliers(
     else:
         print(f"{len(outlier_idx)} outliers found at indices: {outlier_idx.tolist()}")
 
-def plot_time_and_distance_histograms(csv_path, id_col='id', date_col='date', hour_col='hour', lat_col='lat', lon_col='lon'):
-    # Load the data
-    df = pd.read_csv(csv_path)
+def plot_time_and_distance_histograms(df, id_col='id', date_col='date', hour_col='hour', lat_col='lat', lon_col='lon'):
+
     df[hour_col] = df[hour_col].astype(str).str.zfill(6)
     df['datetime'] = pd.to_datetime(df[date_col].astype(str) + df[hour_col], format='%Y%m%d%H%M%S', errors='coerce')
     df = df.dropna(subset=['datetime', lat_col, lon_col])
@@ -285,3 +285,48 @@ def plot_time_and_distance_histograms(csv_path, id_col='id', date_col='date', ho
 
     plt.tight_layout()
     plt.show()
+
+def plot_curve_with_special_points(
+    curve: Curve,
+    special_points: list = None,
+    special_labels: list = None,
+    color: str = 'blue',
+    title: str = '',
+    xlabel: str = 'X',
+    ylabel: str = 'Y',
+    show: bool = True,
+    save_path: str = None
+):
+    """
+    Plot a curve and mark special points (e.g., start/end, outliers) with custom markers and labels.
+    special_points: list of indices or (x, y) tuples to mark.
+    special_labels: list of labels for each special point (optional).
+    """
+    import matplotlib.pyplot as plt
+    arr = np.array(curve)
+    fig, ax = plt.subplots()
+    ax.plot(arr[:, 0], arr[:, 1], '-o', color=color, label='Curve')
+    if special_points is not None:
+        for i, pt in enumerate(special_points):
+            if isinstance(pt, int):
+                x, y = arr[pt, 0], arr[pt, 1]
+            else:
+                x, y = pt
+            label = special_labels[i] if special_labels and i < len(special_labels) else None
+            ax.scatter(x, y, s=100, marker='*', label=label, zorder=10)
+    ax.set_title(title)
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+    ax.grid(True, linestyle='--', alpha=0.5)
+    if special_points is not None and special_labels:
+        handles, labels = ax.get_legend_handles_labels()
+        by_label = dict(zip(labels, handles))
+        ax.legend(by_label.values(), by_label.keys())
+    else:
+        ax.legend()
+    plt.tight_layout()
+    if save_path:
+        plt.savefig(save_path)
+    if show:
+        plt.show()
+    plt.close(fig)
