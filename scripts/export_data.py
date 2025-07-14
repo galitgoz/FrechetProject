@@ -55,7 +55,7 @@ def export_taxi_directory(input_dir: str, output_path: str):
                 break
         else:
             df['date'] = df['datetime'].dt.strftime('%Y%m%d')
-            df['hour'] = df['datetime'].dt.strftime('%H%M')
+            df['hour'] = df['datetime'].dt.strftime('%H%M%S')
             df = df[['id', 'date', 'hour', 'lat', 'lon']]
             all_dfs.append(df)
         print_progress_bar(idx, total, prefix='Processing taxi files:', suffix='Complete', length=40)

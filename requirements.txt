@@ -7,3 +7,7 @@ setuptools~=80.8.0
 rdp~=0.8
 tqdm~=4.67.1
 simplification~=0.7.13
+geopy~=2.4.1
+seaborn~=0.13.2
+pillow~=11.2.1
+pyproj>=3.0
