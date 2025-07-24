@@ -60,24 +60,204 @@ def discrete_frechet_distance(P: Curve, Q: Curve) -> float:
             )
     return dp[-1][-1]
 
-def greedy_frechet_distance(curveA: Curve, curveB: Curve) -> Tuple[float, List[Tuple[int, int]]]:
-    i, j = 0, 0
-    path = [(i, j)]
-    max_dist = euclidean_distance(curveA[0], curveB[0])
-    while i < len(curveA) - 1 and j < len(curveB) - 1:
-        da = euclidean_distance(curveA[i + 1], curveB[j])
-        db = euclidean_distance(curveA[i], curveB[j + 1])
-        if da < db:
-            i += 1; current = da
+def continuous_frechet_distance(P: Curve, Q: Curve, precision: float = 1e-3) -> float:
+    """
+    Compute the continuous Fréchet distance between two curves using binary search.
+
+    The continuous Fréchet distance allows for parameterizations along curve segments,
+    providing a more flexible matching than the discrete version.
+
+    Args:
+        P, Q: Curves as lists of (x, y) points in meters
+        precision: Convergence tolerance for binary search
+
+    Returns:
+        Continuous Fréchet distance in meters
+    """
+    if len(P) == 0 or len(Q) == 0:
+        raise ValueError("Curves must have at least one point each.")
+
+    # Binary search bounds
+    min_dist = 0.0
+    max_dist = max(euclidean_distance(p, q) for p in P for q in Q)
+
+    # Binary search for minimum feasible distance
+    while max_dist - min_dist > precision:
+        mid_dist = (min_dist + max_dist) / 2.0
+        if _is_continuous_frechet_feasible(P, Q, mid_dist):
+            max_dist = mid_dist
         else:
-            j += 1; current = db
-        max_dist = max(max_dist, current)
-        path.append((i, j))
-    while i < len(curveA) - 1:
-        i += 1; current = euclidean_distance(curveA[i], curveB[j]); max_dist = max(max_dist, current); path.append((i, j))
-    while j < len(curveB) - 1:
-        j += 1; current = euclidean_distance(curveA[i], curveB[j]); max_dist = max(max_dist, current); path.append((i, j))
-    return max_dist, path
+            min_dist = mid_dist
+
+    return max_dist
+
+def _is_continuous_frechet_feasible(P: Curve, Q: Curve, epsilon: float) -> bool:
+    """
+    Check if continuous Fréchet distance <= epsilon using free space diagram.
+
+    This implements the feasibility test for continuous Fréchet distance by
+    constructing the free space diagram and checking for a monotone path.
+    """
+    n, m = len(P), len(Q)
+
+    # Construct free space intervals for each cell
+    free_space = {}
+
+    # Process each cell (i,j) representing segments P[i]->P[i+1] and Q[j]->Q[j+1]
+    for i in range(n - 1):
+        for j in range(m - 1):
+            # Get free space interval for this cell
+            interval = _compute_free_space_interval(P[i], P[i+1], Q[j], Q[j+1], epsilon)
+            if interval is not None:
+                free_space[(i, j)] = interval
+
+    # Check if there's a feasible path from (0,0) to (n-1,m-1)
+    return _has_feasible_path(free_space, n-1, m-1, P, Q, epsilon)
+
+def _compute_free_space_interval(p1: Point, p2: Point, q1: Point, q2: Point, epsilon: float) -> Tuple[float, float]:
+    """
+    Compute the free space interval for a cell defined by segments p1->p2 and q1->q2.
+
+    Returns the parameter interval [t_min, t_max] where points on the segments
+    are within distance epsilon, or None if no such interval exists.
+    """
+    # Parameterize segments: P(s) = p1 + s*(p2-p1), Q(t) = q1 + t*(q2-q1)
+    # We need |P(s) - Q(t)| <= epsilon for some s,t in [0,1]
+
+    dp = (p2[0] - p1[0], p2[1] - p1[1])  # Direction vector for P
+    dq = (q2[0] - q1[0], q2[1] - q1[1])  # Direction vector for Q
+    d0 = (p1[0] - q1[0], p1[1] - q1[1])  # Initial offset
+
+    # We need to solve |d0 + s*dp - t*dq|² <= epsilon²
+    # This is a quadratic in s and t
+
+    # Coefficients for the quadratic equation
+    a = dp[0]**2 + dp[1]**2
+    b = dq[0]**2 + dq[1]**2
+    c = -2 * (dp[0]*dq[0] + dp[1]*dq[1])
+    d = 2 * (d0[0]*dp[0] + d0[1]*dp[1])
+    e = -2 * (d0[0]*dq[0] + d0[1]*dq[1])
+    f = d0[0]**2 + d0[1]**2 - epsilon**2
+
+    # For fixed t, solve as*s² + (c*t + d)*s + (b*t² + e*t + f) <= 0
+    valid_intervals = []
+
+    # Sample t values and find valid s intervals
+    num_samples = 100
+    for i in range(num_samples + 1):
+        t = i / num_samples
+
+        # Quadratic in s: as² + (ct + d)s + (bt² + et + f) <= 0
+        coeff_s2 = a
+        coeff_s1 = c * t + d
+        coeff_s0 = b * t**2 + e * t + f
+
+        # Solve quadratic inequality
+        if abs(coeff_s2) < 1e-12:  # Linear case
+            if abs(coeff_s1) < 1e-12:
+                if coeff_s0 <= 0:
+                    s_min, s_max = 0.0, 1.0
+                else:
+                    continue
+            else:
+                s_root = -coeff_s0 / coeff_s1
+                if coeff_s1 > 0:
+                    s_min, s_max = max(0, s_root), 1.0
+                else:
+                    s_min, s_max = 0.0, min(1, s_root)
+        else:  # Quadratic case
+            discriminant = coeff_s1**2 - 4 * coeff_s2 * coeff_s0
+            if discriminant < 0:
+                if coeff_s2 < 0:  # Always negative quadratic
+                    s_min, s_max = 0.0, 1.0
+                else:
+                    continue
+            else:
+                sqrt_disc = math.sqrt(discriminant)
+                s1 = (-coeff_s1 - sqrt_disc) / (2 * coeff_s2)
+                s2 = (-coeff_s1 + sqrt_disc) / (2 * coeff_s2)
+
+                if coeff_s2 > 0:  # Upward parabola
+                    s_min, s_max = max(0, s1), min(1, s2)
+                else:  # Downward parabola
+                    s_min = 0.0
+                    s_max = 1.0
+                    if s1 > 1 or s2 < 0:
+                        continue
+                    if 0 <= s1 <= 1:
+                        s_max = min(s_max, s1)
+                    if 0 <= s2 <= 1:
+                        s_min = max(s_min, s2)
+
+        if s_min <= s_max and s_min <= 1.0 and s_max >= 0.0:
+            valid_intervals.append((max(0, s_min), min(1, s_max)))
+
+    if not valid_intervals:
+        return None
+
+    # Merge overlapping intervals and find the overall range
+    valid_intervals.sort()
+    merged = [valid_intervals[0]]
+    for start, end in valid_intervals[1:]:
+        if start <= merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], end))
+        else:
+            merged.append((start, end))
+
+    if merged:
+        return (merged[0][0], merged[-1][1])
+    return None
+
+def _has_feasible_path(free_space: dict, n: int, m: int, P: Curve, Q: Curve, epsilon: float) -> bool:
+    """
+    Check if there's a monotone path through the free space from (0,0) to (n,m).
+
+    Uses dynamic programming to check connectivity through free space intervals.
+    """
+    # Check if start and end points are within epsilon
+    if euclidean_distance(P[0], Q[0]) > epsilon:
+        return False
+    if euclidean_distance(P[-1], Q[-1]) > epsilon:
+        return False
+
+    # Dynamic programming table: reachable[(i,j)] = True if cell (i,j) is reachable
+    reachable = {}
+
+    # Base case: (0,0) is reachable if the first segments have free space
+    if (0, 0) in free_space:
+        reachable[(0, 0)] = True
+
+    # Fill the DP table
+    for i in range(n):
+        for j in range(m):
+            if (i, j) not in free_space:
+                continue
+
+            # Check if this cell is reachable from previous cells
+            cell_reachable = False
+
+            # From left cell (i, j-1)
+            if j > 0 and (i, j-1) in reachable and reachable[(i, j-1)]:
+                cell_reachable = True
+
+            # From bottom cell (i-1, j)
+            if i > 0 and (i-1, j) in reachable and reachable[(i-1, j)]:
+                cell_reachable = True
+
+            # From diagonal cell (i-1, j-1)
+            if i > 0 and j > 0 and (i-1, j-1) in reachable and reachable[(i-1, j-1)]:
+                cell_reachable = True
+
+            # Special case for starting cell
+            if i == 0 and j == 0:
+                cell_reachable = True
+
+            if cell_reachable:
+                reachable[(i, j)] = True
+
+    # Check if the target cell (n-1, m-1) is reachable
+    return (n-1, m-1) in reachable and reachable[(n-1, m-1)]
+
 
 # Curve Analysis functions
 
@@ -217,8 +397,7 @@ def filter_outlier_points(curve_xy, jerk_norms, sigma=3):
     threshold = np.nanmean(jerk_norms) + sigma * np.nanstd(jerk_norms)
     keep_idx = np.where(jerk_norms <= threshold)[0] + 2  # +2 to align correctly
     keep_idx = np.concatenate(([0, 1], keep_idx))
-    outlier_idx = np.where(jerk_norms > threshold)[0].astype(int)
-    outlier_idx = np.array(curve_xy)[outlier_idx + 2]  # +2 to map to real points
+    outlier_idx = np.where(jerk_norms > threshold)[0] + 2
     filtered_curve_xy = np.array(curve_xy)[keep_idx]
     return filtered_curve_xy, keep_idx, outlier_idx
 
@@ -258,7 +437,7 @@ def rdp_simplify(curve: Curve, epsilon: float) -> Curve:
 
 def simplify_curve_grid_sampling(curve_xy, num_points=None):
     """
-    Simplify curve by sampling sqrt(n) points from grid cells.
+    Simplify curve by sampling sqrt(n) points from grid cells. - need to fix if used, sample is num_points^2
     """
     curve = np.array(curve_xy)
     n = len(curve)
@@ -375,9 +554,23 @@ def velocity_grid_simplify(curve, times=None, velocity_threshold_kmh=10, c=None)
     """
     Simplify a curve by:
     1. Adding points so that the velocity between consecutive points corresponds to velocity_threshold_kmh (km/h), using interpolate_curve_by_velocity.
-    2. Then, sample sqrt(n)/c points (where n is the original curve length, c=log(n) by default) using grid sampling.
-    Returns the simplified curve as a numpy array, and the augmented (interpolated) curve as a numpy array.
+    2. Then, sample sqrt(n)/c points (where n is the original curve length, c=log(n) by default) using uniform sampling.
+
+    Args:
+        curve: List/array of (x, y) coordinates in meters
+        times: Array-like of timestamps (optional)
+        velocity_threshold_kmh: Maximum velocity threshold in km/h
+        c: Simplification factor (default: log(n))
+
+    Returns:
+        tuple: (simplified_curve, augmented_curve) as numpy arrays
+
+    Raises:
+        ValueError: If curve has less than 2 points
     """
+    if len(curve) < 2:
+        raise ValueError("Curve must have at least 2 points for simplification")
+
     # Convert curve to DataFrame for interpolation
     df = pd.DataFrame(curve, columns=['x', 'y'])
     # If times are provided, add a datetime column
@@ -392,13 +585,15 @@ def velocity_grid_simplify(curve, times=None, velocity_threshold_kmh=10, c=None)
     interpolated_df = interpolate_curve_xy_by_velocity(df, velocity_kmh=velocity_threshold_kmh)
     arr_vel = interpolated_df[['x', 'y']].to_numpy()
     n0 = len(curve)
+    print(f"Original curve length: {n0}, Interpolated curve length: {len(arr_vel)}")
     if c is None:
         c = math.log(n0) if n0 > 1 else 1
     num_points = max(2, int(np.sqrt(n0) / c))
     if num_points >= len(arr_vel):
         simplified = arr_vel
     else:
-        simplified = simplify_curve_grid_sampling(arr_vel, num_points=num_points)
+        simplified =uniform_sample_curve_points(arr_vel, num_points=num_points)
+    print(f"Number of points after uniform sampling: {len(simplified)}")
     return simplified, arr_vel
 
 def interpolate_curve_by_velocity(df, velocity_kmh=10):
@@ -476,14 +671,13 @@ def interpolate_curve_xy_by_velocity(df, velocity_kmh=10):
                 total_dist = np.linalg.norm(end_coords - start_coords)
                 total_time_sec = (row_end['datetime'] - row_start['datetime']).total_seconds()
 
+                # Always include the starting point as dictionary
+                interpolated_rows.append(row_start.to_dict())
+
                 if total_time_sec <= 0 or total_dist == 0:
-                    interpolated_rows.append(row_start)
                     continue
 
                 current_velocity = total_dist / total_time_sec
-
-                # Always include the starting point
-                interpolated_rows.append(row_start.to_dict())
 
                 # Check if velocity exceeds threshold and interpolate accordingly
                 if current_velocity > velocity_ms:
@@ -502,11 +696,55 @@ def interpolate_curve_xy_by_velocity(df, velocity_kmh=10):
                             'interpolated': True
                         })
 
-            # Always include the last point
-            interpolated_rows.append(group.iloc[-1].to_dict())
+            # Always include the last point as dictionary
+            if len(group) > 0:
+                interpolated_rows.append(group.iloc[-1].to_dict())
 
         result_df = pd.DataFrame(interpolated_rows)
         result_df.sort_values(['id', 'datetime'], inplace=True)
         result_df.reset_index(drop=True, inplace=True)
 
         return result_df
+
+def uniform_sample_curve_points(curve_xy, num_points):
+    """
+    Uniformly samples a subset of points from the given curve,
+    using only the original points (no interpolation),
+    so that the sampled points are as evenly spaced as possible along the curve length.
+
+    Parameters:
+        curve_xy (array-like): Nx2 array of (x, y) coordinates in meters.
+        num_points (int): The number of points to sample.
+
+    Returns:
+        np.ndarray: num_points x 2 array of sampled points from curve_xy.
+    """
+    curve_xy = np.asarray(curve_xy)
+    n = len(curve_xy)
+    if num_points >= n:
+        # If requested more points than available, return all points
+        return curve_xy.copy()
+
+    # Compute cumulative arc-length (distance from the start for each point)
+    segment_lengths = np.linalg.norm(np.diff(curve_xy, axis=0), axis=1)
+    cumlen = np.concatenate([[0], np.cumsum(segment_lengths)])
+    total_length = cumlen[-1]
+
+    # Determine desired distances along the curve for sampling
+    target_distances = np.linspace(0, total_length, num_points)
+
+    # For each desired distance, find the index of the nearest original point
+    chosen_idx = np.searchsorted(cumlen, target_distances)
+
+    # Remove duplicates if any (possible if many points are close together)
+    unique_idx = np.unique(chosen_idx)
+
+    # If we have fewer than num_points after deduplication, pad with extra indices from remaining points
+    if len(unique_idx) < num_points:
+        pad = num_points - len(unique_idx)
+        extra_idx = np.setdiff1d(np.arange(n), unique_idx)
+        unique_idx = np.concatenate([unique_idx, extra_idx[:pad]])
+        unique_idx = np.sort(unique_idx)
+
+    # Return the selected points
+    return curve_xy[unique_idx]

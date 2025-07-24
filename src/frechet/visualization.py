@@ -367,7 +367,7 @@ def plot_jerk_norms_with_outliers(
         SIGMA=3,
         filtered_jerk_norms=None,
         pdf_path=None,
-        original_curve=None
+        original_curve_lonlat=None
 ):
     """
     Plots jerk norms with outliers and threshold, and (optionally) filtered jerk norms.
@@ -383,10 +383,10 @@ def plot_jerk_norms_with_outliers(
         plt.figure(figsize=(10, 4))
         plt.plot(jerk_norms, label='Jerk Norm ')
         if len(outlier_idx) > 0:
-            outlier_idx = np.asarray(outlier_idx, dtype=int)
-            valid_outlier_idx = outlier_idx[(outlier_idx >= 0) & (outlier_idx < len(jerk_norms))]
-            if len(valid_outlier_idx) > 0:
-                plt.scatter(valid_outlier_idx, np.array(jerk_norms)[valid_outlier_idx], color='red', s=60, label='Outliers')
+            jerk_outlier_idx = np.asarray(outlier_idx, dtype=int)
+            jerk_outlier_idx=jerk_outlier_idx-2
+            plt.scatter(jerk_outlier_idx, np.array(jerk_norms)[jerk_outlier_idx], color='red', s=60, label='Outliers')
+
         plt.axhline(threshold, color='orange', linestyle='--', label=f'Outlier threshold ({SIGMA}\u03c3)')
         plt.annotate('Outliers detected as points above orange dashed line (3\u03c3)',
                      xy=(len(jerk_norms) * 0.7, threshold),
@@ -415,15 +415,12 @@ def plot_jerk_norms_with_outliers(
             plt.close()
 
         # --- Optional: original curve with outlier points in red ---
-        if original_curve is not None and len(original_curve) >= 4:
-            arr = np.array(original_curve)
+        if original_curve_lonlat is not None and len(original_curve_lonlat) >= 4:
+            arr = np.array(original_curve_lonlat)
             plt.figure(figsize=(8, 6))
             plt.plot(arr[:, 0], arr[:, 1], '-o', color='blue', label='Original Curve')
             if len(outlier_idx) > 0:
-                outlier_idx = np.asarray(outlier_idx, dtype=int).flatten()
-                outlier_curve_idx = [int(i) + 2 for i in outlier_idx if (int(i) + 2) < len(arr)]
-                if len(outlier_curve_idx) > 0:
-                    plt.scatter(arr[outlier_curve_idx, 0], arr[outlier_curve_idx, 1], color='red', s=80, label='Outlier Points')
+                plt.scatter(arr[outlier_idx, 0], arr[outlier_idx, 1], color='red', s=80, label='Outlier Points')
             plt.title(f"Original Curve with Outlier Points (id={id_val})")
             plt.xlabel('Longitude')
             plt.ylabel('Latitude')
